@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mysql-hyperdrive-template",
+  "name": "holly-mysql",
   "main": "src/index.ts",
   "compatibility_date": "2025-02-04",
   "observability": {
