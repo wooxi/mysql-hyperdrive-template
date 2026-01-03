@@ -91,6 +91,10 @@ async function saveToDatabase(data: Record<string, string>, env: Env) {
     // 清理和验证数据
     const cleanedData = cleanAndValidateData(data);
 
+    // 打印生成的 JSON 数据到日志
+    console.log("Generated JSON data for CallSheetID:", callSheetID);
+    console.log(cleanedData);
+
     // 插入数据到指定表（使用普通 SQL 查询代替预处理语句）
     const tableName = "callsheetdata"; // 表名固定
     const query = `
