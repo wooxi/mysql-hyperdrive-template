@@ -1,22 +1,25 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "mysql-hyperdrive-template",
-	"main": "src/index.ts",
-	"compatibility_date": "2025-10-08",
-	"compatibility_flags": ["nodejs_compat"],
-	"observability": {
-		"enabled": true
-	},
-	"hyperdrive": [
-		{
-			"binding": "HYPERDRIVE",
-			"id": "a7f717f4d0e0422b8783b4936226669b",
-			"localConnectionString": "mysql://username:password@mysql-domain.com:3306/defaultdb" // Replace with your connection string
-		}
-	],
-	"assets": {
-		"directory": "public",
-		"binding": "ASSETS"
-	},
-	"upload_source_maps": true
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "WORKER-NAME",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-04",
+  "observability": {
+    "enabled": true
+  },
+
+  // Add nodejs_compat compatibility flag to support common database drivers
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+
+  // Add this to your wrangler.jsonc
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "a7f717f4d0e0422b8783b4936226669b",
+      
+      // Optional. Can be used to connect to a local database for local development with `wrangler dev`
+      "localConnectionString": "<LOCAL_CONNECTION_STRING_FOR_LOCAL_DEVELOPMENT_HERE>"
+    }
+  ]
 }
