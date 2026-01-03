@@ -87,16 +87,18 @@ async function saveToDatabase(data: Record<string, string>, env: Env) {
     });
 
     const callSheetID = data.CallSheetID;
-    const jsonData = JSON.stringify(data);
+
+    // 清理和验证数据
+    const cleanedData = cleanAndValidateData(data);
 
     // 插入数据到指定表（使用普通 SQL 查询代替预处理语句）
-    const tableName = "CallSheetData"; // 表名固定
+    const tableName = "callsheetdata"; // 表名固定
     const query = `
       INSERT INTO ${tableName} (CallSheetID, Data)
-      VALUES ('${callSheetID}', '${jsonData}')
+      VALUES (?, ?)
       ON DUPLICATE KEY UPDATE Data = VALUES(Data)
     `;
-    await connection.query(query);
+    await connection.execute(query, [callSheetID, cleanedData]);
   } catch (error) {
     console.error("Error saving data to MySQL:", error);
   } finally {
@@ -104,5 +106,22 @@ async function saveToDatabase(data: Record<string, string>, env: Env) {
     if (connection) {
       await connection.end();
     }
+  }
+}
+
+// 清理和验证数据
+function cleanAndValidateData(data: Record<string, string>): string {
+  try {
+    // 转换为 JSON 字符串
+    const jsonData = JSON.stringify(data);
+
+    // 验证 JSON 是否合法
+    JSON.parse(jsonData);
+
+    // 返回清理后的 JSON 数据
+    return jsonData;
+  } catch (error) {
+    console.error("Invalid data format:", data);
+    throw new Error("Failed to clean and validate data");
   }
 }
