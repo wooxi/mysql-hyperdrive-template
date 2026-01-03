@@ -98,7 +98,8 @@ async function saveToDatabase(data: Record<string, string>, env: Env) {
       VALUES (?, ?)
       ON DUPLICATE KEY UPDATE Data = VALUES(Data)
     `;
-    await connection.execute(query, [callSheetID, cleanedData]);
+    // 使用 query 方法并手动转义特殊字符
+    await connection.query(query, [callSheetID, cleanedData]);
   } catch (error) {
     console.error("Error saving data to MySQL:", error);
   } finally {
