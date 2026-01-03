@@ -93,7 +93,7 @@ async function saveToDatabase(data: Record<string, string>, env: Env) {
 
     // 打印生成的 JSON 数据到日志
     console.log("Generated JSON data for CallSheetID:", callSheetID);
-    console.log(cleanedData);
+    console.log("cleanedData:",cleanedData);
 
     // 插入数据到指定表（使用普通 SQL 查询代替预处理语句）
     const tableName = "callsheetdata"; // 表名固定
