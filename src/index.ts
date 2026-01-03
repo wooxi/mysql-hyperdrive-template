@@ -89,16 +89,14 @@ async function saveToDatabase(data: Record<string, string>, env: Env) {
     const callSheetID = data.CallSheetID;
     const jsonData = JSON.stringify(data);
 
-    // 插入数据到指定表
+    // 插入数据到指定表（使用普通 SQL 查询代替预处理语句）
     const tableName = "CallSheetData"; // 表名固定
-    const [result] = await connection.execute(
-      `INSERT INTO ${tableName} (CallSheetID, Data) VALUES (?, ?) ON DUPLICATE KEY UPDATE Data = VALUES(Data)`,
-      [callSheetID, jsonData]
-    );
-
-    if (result.affectedRows === 0) {
-      throw new Error("Failed to insert or update data in MySQL");
-    }
+    const query = `
+      INSERT INTO ${tableName} (CallSheetID, Data)
+      VALUES ('${callSheetID}', '${jsonData}')
+      ON DUPLICATE KEY UPDATE Data = VALUES(Data)
+    `;
+    await connection.query(query);
   } catch (error) {
     console.error("Error saving data to MySQL:", error);
   } finally {
