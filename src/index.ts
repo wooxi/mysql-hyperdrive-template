@@ -1,6 +1,6 @@
 import { createConnection } from "mysql2/promise";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import { sign, verify } from "@cfworker/jwt";
 
 // 定义环境变量接口
 interface Env {
@@ -124,7 +124,7 @@ async function loginUser(request: Request, env: Env): Promise<Response> {
     }
 
     // 生成 JWT
-    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, { expiresIn: "1h" });
+    const token = await sign({ userId: user.id }, env.JWT_SECRET, { expiresIn: "1h" });
 
     return new Response(JSON.stringify({ token }), {
       status: 200,
