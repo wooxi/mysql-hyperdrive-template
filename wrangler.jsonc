@@ -16,7 +16,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "a7f717f4d0e0422b8783b4936226669b",
+      "id": "5df3cfe07c9a4512a9d99b7e6aec8a4a",
       
       // Optional. Can be used to connect to a local database for local development with `wrangler dev`
       "localConnectionString": "<LOCAL_CONNECTION_STRING_FOR_LOCAL_DEVELOPMENT_HERE>"
