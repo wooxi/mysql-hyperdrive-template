@@ -1,4 +1,6 @@
 import { createConnection } from "mysql2/promise";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 // 定义环境变量接口
 interface Env {
@@ -9,10 +11,8 @@ interface Env {
     database: string;
     port: number;
   };
+  JWT_SECRET: string; // JWT 密钥
 }
-
-// 内存缓存，用于存储已处理的 CallSheetID
-const processedRequests = new Map();
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -21,112 +21,117 @@ export default {
       const path = url.pathname;
       const method = request.method;
 
-      // 检查路径和方法
-      if (path !== "/save" || method !== "GET") {
-        return new Response("Invalid request method or path", {
-          status: 405,
-          headers: { "Content-Type": "text/plain" },
-        });
+      // 用户注册
+      if (path === "/api/register" && method === "POST") {
+        return await registerUser(request, env);
       }
 
-      // 解析查询参数
-      const queryParams = Object.fromEntries(url.searchParams.entries());
-
-      // 获取唯一标识符 CallSheetID
-      const callSheetID = queryParams.CallSheetID;
-      if (!callSheetID) {
-        return new Response("Missing CallSheetID", {
-          status: 400,
-          headers: { "Content-Type": "text/plain" },
-        });
+      // 用户登录
+      if (path === "/api/login" && method === "POST") {
+        return await loginUser(request, env);
       }
 
-      // 检查是否为重复请求
-      if (processedRequests.has(callSheetID)) {
-        console.log(`Duplicate request detected for CallSheetID: ${callSheetID}`);
-        return new Response("success", {
-          status: 200,
-          headers: { "Content-Type": "text/plain" },
-        });
-      }
-
-      // 标记为已处理，并设置过期时间（例如 5 分钟）
-      processedRequests.set(callSheetID, true);
-      setTimeout(() => processedRequests.delete(callSheetID), 5 * 60 * 1000);
-
-      // 异步存储数据到 MySQL（通过 Hyperdrive）
-      ctx.waitUntil(saveToDatabase(queryParams, env));
-
-      // 立即返回字符串 "success"
-      return new Response("success", {
-        status: 200,
-        headers: { "Content-Type": "text/plain" },
-      });
+      // 默认返回 404
+      return new Response("Not Found", { status: 404 });
     } catch (error) {
       console.error("Error handling request:", error);
-      return new Response("Internal Server Error", {
-        status: 500,
-        headers: { "Content-Type": "text/plain" },
-      });
+      return new Response("Internal Server Error", { status: 500 });
     }
   },
 };
 
-// 存储数据到 MySQL（通过 Hyperdrive）
-async function saveToDatabase(data: Record<string, string>, env: Env) {
-  let connection;
+// 用户注册
+async function registerUser(request: Request, env: Env): Promise<Response> {
   try {
-    // 使用 Hyperdrive 连接 MySQL
-    connection = await createConnection({
+    // 解析请求体
+    const body = await request.json();
+    const { username, password } = body;
+
+    if (!username || !password) {
+      return new Response("Missing username or password", { status: 400 });
+    }
+
+    // 哈希加密密码
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // 连接数据库
+    const connection = await createConnection({
       host: env.HYPERDRIVE.host,
       user: env.HYPERDRIVE.user,
       password: env.HYPERDRIVE.password,
       database: env.HYPERDRIVE.database,
       port: env.HYPERDRIVE.port,
-      disableEval: true, // 必须启用以支持 Workers 兼容性
+      disableEval: true,
     });
 
-    const callSheetID = data.CallSheetID;
+    // 插入用户数据
+    const [result] = await connection.execute(
+      "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+      [username, passwordHash]
+    );
 
-    // 清理和验证数据
-    const cleanedData = cleanAndValidateData(data);
+    // 关闭数据库连接
+    await connection.end();
 
-    // 打印生成的 JSON 数据到日志
-    console.log("Generated JSON data for CallSheetID:", callSheetID);
-    // console.log("cleanedData:",cleanedData);
-
-    // 插入数据到指定表（使用普通 SQL 查询代替预处理语句）
-    const tableName = "callsheetdata"; // 表名固定
-    const query = `
-      INSERT INTO ${tableName} (CallSheetID, Data)
-      VALUES (?, ?)
-      ON DUPLICATE KEY UPDATE Data = VALUES(Data)
-    `;
-    // 使用 query 方法并手动转义特殊字符
-    await connection.query(query, [callSheetID, cleanedData]);
+    return new Response("User registered successfully", { status: 201 });
   } catch (error) {
-    console.error("Error saving data to MySQL:", error);
-  } finally {
-    // 确保连接关闭
-    if (connection) {
-      await connection.end();
-    }
+    console.error("Error registering user:", error);
+    return new Response("Internal Server Error", { status: 500 });
   }
 }
 
-// 清理和验证数据
-function cleanAndValidateData(data: Record<string, string>): string {
+// 用户登录
+async function loginUser(request: Request, env: Env): Promise<Response> {
   try {
-    // 转换为 JSON 字符串
-    const jsonData = JSON.stringify(data);
+    // 解析请求体
+    const body = await request.json();
+    const { username, password } = body;
 
-    // 验证 JSON 是否合法
-    JSON.parse(jsonData);
+    if (!username || !password) {
+      return new Response("Missing username or password", { status: 400 });
+    }
 
-    // 返回清理后的 JSON 数据
-    return jsonData;
+    // 连接数据库
+    const connection = await createConnection({
+      host: env.HYPERDRIVE.host,
+      user: env.HYPERDRIVE.user,
+      password: env.HYPERDRIVE.password,
+      database: env.HYPERDRIVE.database,
+      port: env.HYPERDRIVE.port,
+      disableEval: true,
+    });
+
+    // 查询用户信息
+    const [rows] = await connection.execute(
+      "SELECT id, username, password_hash FROM users WHERE username = ?",
+      [username]
+    );
+
+    // 关闭数据库连接
+    await connection.end();
+
+    if (rows.length === 0) {
+      return new Response("Invalid username or password", { status: 401 });
+    }
+
+    const user = rows[0];
+
+    // 验证密码
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    if (!isPasswordValid) {
+      return new Response("Invalid username or password", { status: 401 });
+    }
+
+    // 生成 JWT
+    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, { expiresIn: "1h" });
+
+    return new Response(JSON.stringify({ token }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
-    console.error("Invalid data format:", data);
-    throw new Error("Failed to clean and validate data");
+    console.error("Error logging in user:", error);
+    return new Response("Internal Server Error", { status: 500 });
   }
 }
