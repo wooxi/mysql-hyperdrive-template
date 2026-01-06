@@ -1,5 +1,4 @@
 import { createConnection } from "mysql2/promise";
-import * as XLSX from "xlsx";
 
 // 定义环境变量接口
 interface Env {
@@ -19,7 +18,7 @@ export default {
       const path = url.pathname;
       const method = request.method;
 
-      // 处理文件上传和数据导入
+      // 处理数据导入
       if (path === "/api/import" && method === "POST") {
         return await importData(request, env);
       }
@@ -36,80 +35,41 @@ export default {
 // 导入数据
 async function importData(request: Request, env: Env): Promise<Response> {
   try {
-    // 解析请求体（获取上传的文件）
-    const formData = await request.formData();
-    const file = formData.get("file") as File;
+    // 解析请求体（获取 JSON 数据）
+    const body = await request.json();
+    const rows = body.rows;
 
-    if (!file) {
-      return new Response("Missing file", { status: 400 });
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return new Response("Missing or invalid data", { status: 400 });
     }
 
-    // 读取 Excel 文件
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: "array" });
-    const sheetName = workbook.SheetNames[0]; // 假设只处理第一个工作表
-    const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-    // 检查表头是否包含必填字段
+    // 检查必填字段
     const requiredFields = [
-      "主叫号码",
-      "被叫号码",
-      "呼叫类型",
-      "呼叫时间",
-      "坐席通话时间",
-      "部门",
-      "接听坐席",
-      "工号",
-      "接听状态",
-      "呼入技能组",
-      "终结节点",
-      "按键轨迹",
-      "省",
-      "市",
-      "通话ID",
-      "PBX名称",
+      "call_id",
+      "caller_number",
+      "callee_number",
+      "call_type",
+      "call_time",
+      "agent_call_time",
+      "department",
+      "agent_name",
+      "agent_id",
+      "call_status",
+      "skill_group",
+      "end_node",
+      "key_track",
+      "province",
+      "city",
+      "pbx_name",
     ];
 
-    const headers = jsonData[0] as string[];
-    for (const field of requiredFields) {
-      if (!headers.includes(field)) {
-        return new Response(`Missing required field: ${field}`, { status: 400 });
+    for (const row of rows) {
+      for (const field of requiredFields) {
+        if (!(field in row)) {
+          return new Response(`Missing required field: ${field}`, { status: 400 });
+        }
       }
     }
-
-    // 构建字段映射规则
-    const fieldMapping = {
-      主叫号码: "caller_number",
-      被叫号码: "callee_number",
-      呼叫类型: "call_type",
-      呼叫时间: "call_time",
-      坐席通话时间: "agent_call_time",
-      部门: "department",
-      接听坐席: "agent_name",
-      工号: "agent_id",
-      接听状态: "call_status",
-      呼入技能组: "skill_group",
-      终结节点: "end_node",
-      按键轨迹: "key_track",
-      省: "province",
-      市: "city",
-      通话ID: "call_id",
-      PBX名称: "pbx_name",
-    };
-
-    // 转换数据格式
-    const rows = jsonData.slice(1).map((row) => {
-      const rowData: Record<string, string> = {};
-      row.forEach((value, index) => {
-        const fieldName = headers[index];
-        const mappedField = fieldMapping[fieldName];
-        if (mappedField) {
-          rowData[mappedField] = String(value || "");
-        }
-      });
-      return rowData;
-    });
 
     // 连接数据库
     const connection = await createConnection({
