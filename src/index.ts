@@ -1,6 +1,4 @@
 import { createConnection } from "mysql2/promise";
-import bcrypt from "bcryptjs";
-import { sign, verify } from "@cfworker/jwt";
 
 // 定义环境变量接口
 interface Env {
@@ -40,6 +38,78 @@ export default {
   },
 };
 
+// 使用 Web Crypto API 进行密码哈希加密
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// 使用 Web Crypto API 生成 JWT
+async function generateJWT(payload: object, secret: string): Promise<string> {
+  const header = { alg: "HS256", typ: "JWT" };
+
+  const base64UrlEncode = (obj: object): string => {
+    return btoa(JSON.stringify(obj))
+      .replace(/=/g, "")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_");
+  };
+
+  const encodedHeader = base64UrlEncode(header);
+  const encodedPayload = base64UrlEncode({ ...payload, exp: Date.now() + 3600 * 1000 }); // 设置过期时间为 1 小时
+
+  const signatureInput = `${encodedHeader}.${encodedPayload}`;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+  const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(signatureInput));
+  const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+  const signature = signatureArray.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+// 使用 Web Crypto API 验证 JWT
+async function verifyJWT(token: string, secret: string): Promise<any> {
+  const [encodedHeader, encodedPayload, signature] = token.split(".");
+  const signatureInput = `${encodedHeader}.${encodedPayload}`;
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+
+  const isValid = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    Uint8Array.from(atob(signature), (c) => c.charCodeAt(0)),
+    encoder.encode(signatureInput)
+  );
+
+  if (!isValid) {
+    throw new Error("Invalid token");
+  }
+
+  const payload = JSON.parse(atob(encodedPayload));
+  if (payload.exp < Date.now()) {
+    throw new Error("Token expired");
+  }
+
+  return payload;
+}
+
 // 用户注册
 async function registerUser(request: Request, env: Env): Promise<Response> {
   try {
@@ -52,8 +122,7 @@ async function registerUser(request: Request, env: Env): Promise<Response> {
     }
 
     // 哈希加密密码
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const passwordHash = await hashPassword(password);
 
     // 连接数据库
     const connection = await createConnection({
@@ -118,13 +187,13 @@ async function loginUser(request: Request, env: Env): Promise<Response> {
     const user = rows[0];
 
     // 验证密码
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    const isPasswordValid = (await hashPassword(password)) === user.password_hash;
     if (!isPasswordValid) {
       return new Response("Invalid username or password", { status: 401 });
     }
 
     // 生成 JWT
-    const token = await sign({ userId: user.id }, env.JWT_SECRET, { expiresIn: "1h" });
+    const token = await generateJWT({ userId: user.id }, env.JWT_SECRET);
 
     return new Response(JSON.stringify({ token }), {
       status: 200,
